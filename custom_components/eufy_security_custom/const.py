@@ -1,5 +1,6 @@
 """Constants for Eufy Security Custom."""
 DOMAIN = "eufy_security_custom"
+CONF_WS_URL = "ws_url"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_CODE = "code"

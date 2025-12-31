@@ -27,14 +27,16 @@ class EufySecurityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
+            self.ws_url = user_input.get(CONF_WS_URL, "ws://localhost:3000")
             self.username = user_input[CONF_USERNAME]
             self.password = user_input[CONF_PASSWORD]
             
             session = async_get_clientsession(self.hass)
-            self.api = EufyAPI(session)
+            from .eufy_api import EufyWS
+            self.api = EufyWS(session, self.ws_url)
             
             try:
-                result = await self.api.login(self.username, self.password)
+                result = await self.api.connect_and_login(self.username, self.password)
                 
                 if result["status"] == "success":
                     return self.async_create_entry(
@@ -42,7 +44,7 @@ class EufySecurityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         data={
                             CONF_USERNAME: self.username, 
                             CONF_PASSWORD: self.password,
-                            "token": result.get("token")
+                            CONF_WS_URL: self.ws_url
                         }
                     )
                 elif result["status"] == "2fa_required":
@@ -56,16 +58,10 @@ class EufySecurityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self.captcha_img = img_data
                     return await self.async_step_captcha()
                 else:
-                    # Pass the actual error message to the UI
                     msg = result.get("msg", "Unknown error")
                     errors["base"] = "custom_error" 
-                    self.context["error_message"] = msg # Hack to pass data if needed, but schema can't display it easily without custom template.
-                    # Simpler: map common errors or just log it.
-                    # Actually, we can use the schema to show it if we defined a dynamic error key, 
-                    # but for now let's just log it loudly and maybe raise ConfigEntryNotReady if we really wanted.
-                    # Better: raise a specific exception or set a specific string.
-                    errors["base"] = "invalid_auth" # Fallback
-                    _LOGGER.warning(f"Login failed in UI: {msg}") # FORCE LOGGING
+                    self.context["error_message"] = msg
+                    _LOGGER.warning(f"WS Handshake failed: {msg}")
 
             except Exception as e:
                 _LOGGER.error(f"Unexpected exception in config flow: {e}")
@@ -76,6 +72,7 @@ class EufySecurityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required(CONF_USERNAME): str,
                 vol.Required(CONF_PASSWORD): str,
+                vol.Optional(CONF_WS_URL, default="ws://localhost:3000"): str,
             }),
             errors=errors,
         )
