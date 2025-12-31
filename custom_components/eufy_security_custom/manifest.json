@@ -1,0 +1,12 @@
+{
+  "domain": "eufy_security_custom",
+  "name": "Eufy Security Custom",
+  "codeowners": ["@yourusername"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/yourusername/eufy_security_custom",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/yourusername/eufy_security_custom/issues",
+  "requirements": ["aiohttp"],
+  "version": "1.0.0"
+}

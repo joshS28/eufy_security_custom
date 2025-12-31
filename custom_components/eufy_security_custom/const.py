@@ -1,0 +1,8 @@
+"""Constants for Eufy Security Custom."""
+DOMAIN = "eufy_security_custom"
+CONF_USERNAME = "username"
+CONF_PASSWORD = "password"
+CONF_CODE = "code"
+CONF_CAPTCHA_ID = "captcha_id"
+CONF_CAPTCHA_IMG = "captcha_img"
+CONF_CAPTCHA_INPUT = "captcha_input"

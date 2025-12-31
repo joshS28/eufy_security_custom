@@ -1,0 +1,37 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connect to Eufy Security",
+                "description": "Enter your Eufy account credentials.",
+                "data": {
+                    "username": "Email",
+                    "password": "Password"
+                }
+            },
+            "2fa": {
+                "title": "Two-Factor Authentication",
+                "description": "Enter the code sent to your email or phone.",
+                "data": {
+                    "code": "Verification Code"
+                }
+            },
+            "captcha": {
+                "title": "Captcha Verification",
+                "description": "Please enter the text from the captcha image:\n\n![Captcha]({captcha_img})",
+                "data": {
+                    "captcha_input": "Captcha"
+                }
+            }
+        },
+        "error": {
+            "invalid_auth": "Invalid authentication.",
+            "invalid_code": "Invalid verification code.",
+            "invalid_captcha": "Invalid captcha.",
+            "unknown": "Unexpected error."
+        },
+        "abort": {
+            "already_configured": "Account is already configured."
+        }
+    }
+}

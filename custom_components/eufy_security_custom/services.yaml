@@ -1,0 +1,3 @@
+force_sync:
+  name: Force Sync
+  description: Force synchronization with the Eufy cloud.
