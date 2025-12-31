@@ -72,7 +72,7 @@ class EufySecurityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required(CONF_USERNAME): str,
                 vol.Required(CONF_PASSWORD): str,
-                vol.Optional(CONF_WS_URL, default="ws://localhost:3000"): str,
+                vol.Optional(CONF_WS_URL, default="ws://eufy-security-ws:3000"): str,
             }),
             errors=errors,
         )
