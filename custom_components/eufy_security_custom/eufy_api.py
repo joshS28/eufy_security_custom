@@ -14,18 +14,28 @@ class EufyAPI:
 
     async def login(self, username, password):
         """
-        Attempt to login to Eufy Cloud (tries US then EU).
+        Attempt to login to Eufy Cloud (tries US then EU, multiple endpoints).
         """
-        urls = [
-             "https://mysecurity.eufylife.com",      # US / Global
-             "https://security-app-eu.eufylife.com"  # EU
+        # List of (Base URL, Endpoint) to try
+        # Note: 405 usually means wrong endpoint or method. 
+        # API v2 is becoming standard.
+        targets = [
+             # US / Global
+             ("https://mysecurity.eufylife.com", "/api/v1/passport/login"),
+             ("https://security-app.eufylife.com", "/v1/passport/login"),
+             ("https://security-app.eufylife.com", "/v2/passport/login"),
+             
+             # EU - likely needed for Irish account
+             ("https://security-app-eu.eufylife.com", "/v1/passport/login"),
+             ("https://security-app-eu.eufylife.com", "/v2/passport/login"),
+             ("https://security-app-eu.eufylife.com", "/v1/passport/profile"), # Sometimes used to check token validity
         ]
 
         last_error_msg = ""
         
-        for base_url in urls:
+        for base_url, endpoint in targets:
             self.base_url = base_url
-            url = f"{self.base_url}/api/v1/passport/login"
+            url = f"{self.base_url}{endpoint}"
             
             # Standard Eufy App Headers (Android simulation)
             headers = {
@@ -49,15 +59,27 @@ class EufyAPI:
             }
 
             try:
-                _LOGGER.info(f"Attempting login against {base_url}")
+                _LOGGER.info(f"Attempting login against {url}")
                 async with self.session.post(url, json=payload, headers=headers) as resp:
-                    data = await resp.json()
-                    _LOGGER.debug(f"Login Response: {data}")
+                    # READ AS TEXT FIRST to avoid aiohttp ContentTypeError crash
+                    text_response = await resp.text()
                     
+                    try:
+                        data = json.loads(text_response)
+                        _LOGGER.debug(f"Login Response from {url}: {data}")
+                    except json.JSONDecodeError:
+                         _LOGGER.warning(f"Non-JSON response from {url}: {resp.status} - {text_response[:100]}...")
+                         continue # Try next endpoint
+
                     code = data.get("code")
                     msg = data.get("msg")
                     last_error_msg = f"{code}: {msg}"
                     
+                    # 404/405 usually handled by aiohttp status check, but if we got text, check code
+                    if resp.status >= 400:
+                         _LOGGER.warning(f"HTTP {resp.status} from {url}: {msg}")
+                         continue
+
                     if code == 0:
                         # Success
                         auth_token = data.get("data", {}).get("auth_token")
