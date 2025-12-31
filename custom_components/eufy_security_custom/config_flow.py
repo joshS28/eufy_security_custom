@@ -82,15 +82,18 @@ class EufySecurityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             code = user_input[CONF_CODE]
-            if await self.api.verify_code(code):
-                 return self.async_create_entry(
+            try:
+                await self.api.set_verify_code(code)
+                return self.async_create_entry(
                         title=self.username, 
                         data={
                             CONF_USERNAME: self.username, 
                             CONF_PASSWORD: self.password,
+                            CONF_WS_URL: self.ws_url
                         }
                     )
-            else:
+            except Exception as e:
+                _LOGGER.error(f"Failed to verify code: {e}")
                 errors["base"] = "invalid_code"
 
         return self.async_show_form(
@@ -106,17 +109,22 @@ class EufySecurityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
         if user_input is not None:
             captcha_input = user_input[CONF_CAPTCHA_INPUT]
-            if await self.api.verify_captcha(self.captcha_id, captcha_input):
-                 # After captcha, usually we re-login or it auto-logs in
-                 # For simplicity, assuming success
-                 return self.async_create_entry(
+            
+            # Send the captcha back to the WebSocket
+            try:
+                await self.api.set_captcha(self.captcha_id, captcha_input)
+                # After sending, we might want to wait a moment to see if it logs in or asks for 2FA next?
+                # For now, let's assume it works and create the entry. The addon handles the rest.
+                return self.async_create_entry(
                         title=self.username, 
                         data={
                             CONF_USERNAME: self.username, 
                             CONF_PASSWORD: self.password,
+                            CONF_WS_URL: self.ws_url
                         }
-                    )
-            else:
+                 )
+            except Exception as e:
+                _LOGGER.error(f"Failed to send captcha: {e}")
                 errors["base"] = "invalid_captcha"
 
         # Note: Displaying the captcha image in HA config flow is tricky.
