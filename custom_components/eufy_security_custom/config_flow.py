@@ -56,10 +56,19 @@ class EufySecurityConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self.captcha_img = img_data
                     return await self.async_step_captcha()
                 else:
-                    errors["base"] = "invalid_auth"
+                    # Pass the actual error message to the UI
+                    msg = result.get("msg", "Unknown error")
+                    errors["base"] = "custom_error" 
+                    self.context["error_message"] = msg # Hack to pass data if needed, but schema can't display it easily without custom template.
+                    # Simpler: map common errors or just log it.
+                    # Actually, we can use the schema to show it if we defined a dynamic error key, 
+                    # but for now let's just log it loudly and maybe raise ConfigEntryNotReady if we really wanted.
+                    # Better: raise a specific exception or set a specific string.
+                    errors["base"] = "invalid_auth" # Fallback
+                    _LOGGER.warning(f"Login failed in UI: {msg}") # FORCE LOGGING
 
-            except Exception:
-                _LOGGER.exception("Unexpected exception")
+            except Exception as e:
+                _LOGGER.error(f"Unexpected exception in config flow: {e}")
                 errors["base"] = "unknown"
 
         return self.async_show_form(

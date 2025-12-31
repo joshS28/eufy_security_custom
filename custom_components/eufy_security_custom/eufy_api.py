@@ -43,18 +43,22 @@ class EufyAPI:
         }
 
         try:
-            _LOGGER.info(f"Attempting Web Portal login: {url}")
+            _LOGGER.warning(f"Attempting Web Portal login: {url}")
             async with self.session.post(url, json=payload, headers=headers) as resp:
                 text_response = await resp.text()
                 
-                # Debug logging
-                _LOGGER.debug(f"Status: {resp.status}")
-                _LOGGER.debug(f"Response: {text_response[:200]}...") # Truncate for safety
+                # Debug logging - Force Warning for visibility during debug
+                _LOGGER.warning(f"Status: {resp.status}")
+                if len(text_response) > 200:
+                     _LOGGER.warning(f"Response: {text_response[:200]}...")
+                else:
+                     _LOGGER.warning(f"Response: {text_response}")
 
                 try:
                     data = json.loads(text_response)
                 except json.JSONDecodeError:
                      # If we get HTML (405/403), it's a hard block.
+                     _LOGGER.warning(f"HARD FAILURE: Non-JSON response: {resp.status}")
                      return {"status": "error", "msg": f"Non-JSON response: {resp.status}"}
 
                 code = data.get("code")
@@ -64,10 +68,11 @@ class EufyAPI:
                     # Success
                     auth_token = data.get("data", {}).get("auth_token")
                     self.token = auth_token
-                    _LOGGER.info("Login Successful!")
+                    _LOGGER.warning("Login Successful!")
                     return {"status": "success", "token": auth_token}
                 
                 elif code == 26052 or code == 100026:
+                    _LOGGER.warning("Captcha Required")
                     return {
                         "status": "captcha_required",
                         "captcha_id": data.get("data", {}).get("captcha_id"),
@@ -75,14 +80,15 @@ class EufyAPI:
                     }
                 
                 elif code == 26058 or "verify_code" in str(data):
+                    _LOGGER.warning("2FA Required")
                     return {"status": "2fa_required"}
                 
                 else:
-                    _LOGGER.error(f"Eufy API Error: {code} - {msg}")
+                    _LOGGER.warning(f"Eufy API Error: {code} - {msg}")
                     return {"status": "error", "msg": msg}
 
         except Exception as e:
-            _LOGGER.exception(f"Connection error: {e}")
+            _LOGGER.warning(f"Connection error: {e}")
             return {"status": "error", "msg": str(e)}
 
     async def verify_code(self, code):
