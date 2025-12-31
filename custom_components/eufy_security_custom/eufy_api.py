@@ -14,109 +14,76 @@ class EufyAPI:
 
     async def login(self, username, password):
         """
-        Attempt to login to Eufy Cloud (tries US then EU, multiple endpoints).
+        Attempt to login mimicking the Eufy Web Portal (Chrome).
+        This avoids the complex signature requirements of the mobile app API.
         """
-        # List of (Base URL, Endpoint) to try
-        targets = [
-             # EU - likely needed for Irish account
-             ("https://security-app-eu.eufylife.com", "/v2/passport/login"),
-             ("https://security-app-eu.eufylife.com", "/v1/passport/login"),
-             
-             # US / Global
-             ("https://mysecurity.eufylife.com", "/v1/passport/login"),
-        ]
+        # The Web Portal API endpoint
+        url = "https://mysecurity.eufylife.com/api/v1/passport/login"
+        self.base_url = "https://mysecurity.eufylife.com"
 
-        last_error_msg = ""
+        # Headers mimicking a standard Desktop Browser
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Content-Type": "application/json",
+            "Origin": "https://mysecurity.eufylife.com",
+            "Referer": "https://mysecurity.eufylife.com/",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            # Sometimes required for API consistency
+            "timezone": "Europe/Dublin", 
+            "country": "IE"
+        }
         
-        for base_url, endpoint in targets:
-            self.base_url = base_url
-            url = f"{self.base_url}{endpoint}"
-            
-            # Eufy now strictly checks headers and often mock signatures
-            # We must look like a real mobile app
-            headers = {
-                "app-version": "4.5.1",
-                "os-type": "android",
-                "os-version": "31", # Android 12
-                "phone-model": "2109119DG",
-                "country": "IE", # Critical for EU
-                "language": "en",
-                "openudid": "d8e32d1839364951",
-                "uid": "",
-                "net-type": "wifi",
-                "user-agent": "EufySecurity/4.5.1 (Android 12; 2109119DG)",
-                "Content-Type": "application/json",
-                # The "timezone" can often be required
-                "timezone": "Europe/Dublin"
-            }
-            
-            # Note: "enc_password" and "time_zone" often help
-            payload = {
-                "email": username,
-                "password": password,
-                "enc_password": password, 
-                "time_zone": "Europe/Dublin",
-                # Transaction string is sometimes checked as a nonce
-                "transaction": f"{int(1000 * 1000)}", 
-            }
+        payload = {
+            "email": username,
+            "password": password,
+        }
 
-            try:
-                _LOGGER.info(f"Attempting login against {url}")
-                async with self.session.post(url, json=payload, headers=headers) as resp:
-                    # READ AS TEXT FIRST to avoid aiohttp ContentTypeError crash
-                    text_response = await resp.text()
-                    
-                    try:
-                        data = json.loads(text_response)
-                        _LOGGER.debug(f"Login Response from {url}: {data}")
-                    except json.JSONDecodeError:
-                         _LOGGER.warning(f"Non-JSON response from {url}: {resp.status} - {text_response[:100]}...")
-                         continue # Try next endpoint
+        try:
+            _LOGGER.info(f"Attempting Web Portal login: {url}")
+            async with self.session.post(url, json=payload, headers=headers) as resp:
+                text_response = await resp.text()
+                
+                # Debug logging
+                _LOGGER.debug(f"Status: {resp.status}")
+                _LOGGER.debug(f"Response: {text_response[:200]}...") # Truncate for safety
 
-                    code = data.get("code")
-                    msg = data.get("msg")
-                    last_error_msg = f"{code}: {msg}"
-                    
-                    # 403: Forbidden - often means Geo-block or Bad Headers
-                    if resp.status == 403:
-                         _LOGGER.warning(f"HTTP 403 Forbidden from {url}: Check headers or IP region. Msg: {msg}")
-                         continue
-                         
-                    if resp.status >= 400:
-                         _LOGGER.warning(f"HTTP {resp.status} from {url}: {msg}")
-                         continue
+                try:
+                    data = json.loads(text_response)
+                except json.JSONDecodeError:
+                     # If we get HTML (405/403), it's a hard block.
+                     return {"status": "error", "msg": f"Non-JSON response: {resp.status}"}
 
-                    # Code 0 = Success
-                    if code == 0:
-                        # Success
-                        auth_token = data.get("data", {}).get("auth_token")
-                        self.token = auth_token
-                        return {"status": "success", "token": auth_token}
-                    
-                    # Captcha Codes
-                    elif code == 26052 or code == 100026:
-                        # Captcha Required
-                        captcha_id = data.get("data", {}).get("captcha_id")
-                        captcha_img = data.get("data", {}).get("captcha_url")
-                        return {
-                            "status": "captcha_required",
-                            "captcha_id": captcha_id,
-                            "captcha_img": captcha_img
-                        }
-                    
-                    # 2FA Codes
-                    elif code == 26058 or "verify_code" in str(data):
-                        # 2FA Required
-                        return {"status": "2fa_required"}
-                    
-                    # If generic error, loop to try next server (e.g. User not found in this region)
-                    _LOGGER.warning(f"Failed on {base_url}: {msg}")
+                code = data.get("code")
+                msg = data.get("msg")
+                
+                if code == 0:
+                    # Success
+                    auth_token = data.get("data", {}).get("auth_token")
+                    self.token = auth_token
+                    _LOGGER.info("Login Successful!")
+                    return {"status": "success", "token": auth_token}
+                
+                elif code == 26052 or code == 100026:
+                    return {
+                        "status": "captcha_required",
+                        "captcha_id": data.get("data", {}).get("captcha_id"),
+                        "captcha_img": data.get("data", {}).get("captcha_url")
+                    }
+                
+                elif code == 26058 or "verify_code" in str(data):
+                    return {"status": "2fa_required"}
+                
+                else:
+                    _LOGGER.error(f"Eufy API Error: {code} - {msg}")
+                    return {"status": "error", "msg": msg}
 
-            except Exception as e:
-                _LOGGER.exception(f"Connection error on {base_url}: {e}")
-                last_error_msg = str(e)
-        
-        return {"status": "error", "msg": last_error_msg}
+        except Exception as e:
+            _LOGGER.exception(f"Connection error: {e}")
+            return {"status": "error", "msg": str(e)}
 
     async def verify_code(self, code):
         """Verify 2FA code (Placeholder - tricky to implement blindly)."""
