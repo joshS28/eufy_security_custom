@@ -4,7 +4,7 @@ from homeassistant.const import CONF_USERNAME, CONF_PASSWORD, CONF_CODE
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import logging
 
-from .const import DOMAIN, CONF_CAPTCHA_INPUT, CONF_CAPTCHA_ID, CONF_CAPTCHA_IMG
+from .const import DOMAIN, CONF_CAPTCHA_INPUT, CONF_CAPTCHA_ID, CONF_CAPTCHA_IMG, CONF_WS_URL
 from .eufy_api import EufyAPI
 
 _LOGGER = logging.getLogger(__name__)
