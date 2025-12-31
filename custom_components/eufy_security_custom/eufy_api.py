@@ -17,18 +17,13 @@ class EufyAPI:
         Attempt to login to Eufy Cloud (tries US then EU, multiple endpoints).
         """
         # List of (Base URL, Endpoint) to try
-        # Note: 405 usually means wrong endpoint or method. 
-        # API v2 is becoming standard.
         targets = [
-             # US / Global
-             ("https://mysecurity.eufylife.com", "/api/v1/passport/login"),
-             ("https://security-app.eufylife.com", "/v1/passport/login"),
-             ("https://security-app.eufylife.com", "/v2/passport/login"),
-             
              # EU - likely needed for Irish account
-             ("https://security-app-eu.eufylife.com", "/v1/passport/login"),
              ("https://security-app-eu.eufylife.com", "/v2/passport/login"),
-             ("https://security-app-eu.eufylife.com", "/v1/passport/profile"), # Sometimes used to check token validity
+             ("https://security-app-eu.eufylife.com", "/v1/passport/login"),
+             
+             # US / Global
+             ("https://mysecurity.eufylife.com", "/v1/passport/login"),
         ]
 
         last_error_msg = ""
@@ -37,25 +32,32 @@ class EufyAPI:
             self.base_url = base_url
             url = f"{self.base_url}{endpoint}"
             
-            # Standard Eufy App Headers (Android simulation)
+            # Eufy now strictly checks headers and often mock signatures
+            # We must look like a real mobile app
             headers = {
-                "app-version": "4.0.0",
+                "app-version": "4.5.1",
                 "os-type": "android",
-                "os-version": "10",
-                "phone-model": "Gold",
-                "country": "IE", # Defaulting to IE/EU friendly
+                "os-version": "31", # Android 12
+                "phone-model": "2109119DG",
+                "country": "IE", # Critical for EU
                 "language": "en",
-                "openudid": "5e63b4a13936d0",
+                "openudid": "d8e32d1839364951",
                 "uid": "",
                 "net-type": "wifi",
-                "user-agent": "EufySecurity/4.0.0 (Android 10; Gold)",
+                "user-agent": "EufySecurity/4.5.1 (Android 12; 2109119DG)",
                 "Content-Type": "application/json",
+                # The "timezone" can often be required
+                "timezone": "Europe/Dublin"
             }
             
+            # Note: "enc_password" and "time_zone" often help
             payload = {
                 "email": username,
                 "password": password,
-                "enc_password": password,
+                "enc_password": password, 
+                "time_zone": "Europe/Dublin",
+                # Transaction string is sometimes checked as a nonce
+                "transaction": f"{int(1000 * 1000)}", 
             }
 
             try:
@@ -75,17 +77,23 @@ class EufyAPI:
                     msg = data.get("msg")
                     last_error_msg = f"{code}: {msg}"
                     
-                    # 404/405 usually handled by aiohttp status check, but if we got text, check code
+                    # 403: Forbidden - often means Geo-block or Bad Headers
+                    if resp.status == 403:
+                         _LOGGER.warning(f"HTTP 403 Forbidden from {url}: Check headers or IP region. Msg: {msg}")
+                         continue
+                         
                     if resp.status >= 400:
                          _LOGGER.warning(f"HTTP {resp.status} from {url}: {msg}")
                          continue
 
+                    # Code 0 = Success
                     if code == 0:
                         # Success
                         auth_token = data.get("data", {}).get("auth_token")
                         self.token = auth_token
                         return {"status": "success", "token": auth_token}
                     
+                    # Captcha Codes
                     elif code == 26052 or code == 100026:
                         # Captcha Required
                         captcha_id = data.get("data", {}).get("captcha_id")
@@ -96,6 +104,7 @@ class EufyAPI:
                             "captcha_img": captcha_img
                         }
                     
+                    # 2FA Codes
                     elif code == 26058 or "verify_code" in str(data):
                         # 2FA Required
                         return {"status": "2fa_required"}
